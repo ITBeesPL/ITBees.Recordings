@@ -145,6 +145,7 @@ internal sealed class RecordingManager : IRecordingManager
         Installed = _binaryReady,
         ServiceActive = _serviceActive,
         StorageDirectory = _storage?.Root,
+        UsbDiskInUse = _storage?.MountPoint != null,
         FreeSpaceBytes = _diskUsage?.AvailableBytes,
         DiskUsedPercent = _diskUsage?.UsedPercent,
         Error = _error,

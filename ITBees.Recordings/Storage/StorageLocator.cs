@@ -34,6 +34,9 @@ internal sealed class StorageLocator : IStorageLocator
     private readonly ILinuxSystem _linuxSystem;
     private readonly ILogger<StorageLocator> _logger;
 
+    // Null until the first pass; the fallback to the device is logged only when it starts.
+    private bool? _usbInUse;
+
     public StorageLocator(IOptions<RecordingsOptions> options, ILinuxSystem linuxSystem, ILogger<StorageLocator> logger)
     {
         _options = options.Value;
@@ -45,20 +48,34 @@ internal sealed class StorageLocator : IStorageLocator
 
     public async Task<StorageLocation?> LocateAsync(LinuxIdentity identity, CancellationToken cancellationToken)
     {
-        StorageLocation location;
-        if (_options.UsbStorage == false)
+        var location = new StorageLocation(_options.StorageDirectory, null);
+        if (_options.UsbStorage)
         {
-            location = new StorageLocation(_options.StorageDirectory, null);
-        }
-        else
-        {
-            var mountPoint = await FindUsbMountAsync(identity, cancellationToken);
-            if (mountPoint == null)
+            string? mountPoint;
+            try
+            {
+                mountPoint = await FindUsbMountAsync(identity, cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException && _options.UsbFallbackToStorageDirectory)
+            {
+                Problem = $"USB disk cannot be used: {e.Message}";
+                mountPoint = null;
+            }
+
+            if (mountPoint != null)
+            {
+                location = new StorageLocation(Path.Combine(mountPoint, UsbRootFolder), mountPoint);
+            }
+            else if (_options.UsbFallbackToStorageDirectory == false)
             {
                 return null;
             }
+            else if (_usbInUse != false)
+            {
+                _logger.LogWarning("{Problem} - recording to {Directory} on the device until a USB disk is plugged in", Problem, _options.StorageDirectory);
+            }
 
-            location = new StorageLocation(Path.Combine(mountPoint, UsbRootFolder), mountPoint);
+            _usbInUse = mountPoint != null;
         }
 
         await _linuxSystem.EnsureWritableDirectoryAsync(location.Root, identity, cancellationToken);

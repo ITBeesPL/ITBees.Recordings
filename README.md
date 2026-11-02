@@ -9,7 +9,8 @@ Continuous camera recording for Linux devices (e.g. an Octopark column or local 
   overwriting the oldest files when the disk reaches a usage limit (ring buffer),
 - finds the stream over **ONVIF** (main / sub / lowest profile, or an explicit token) and can set the
   camera encoder (resolution, bitrate, fps, key-frame interval) to control file size,
-- optionally records onto a **USB disk** (local server) and never falls back to the SD card,
+- optionally records onto a **USB disk** (local server), falling back to a folder on the device while no disk
+  is plugged in,
 - cuts **event clips** (45 s before + 45 s after by default) out of the continuous recording.
 
 It depends on neither FAS nor EF - only on `Microsoft.Extensions.*`.
@@ -119,8 +120,10 @@ key frame: with the factory GOP of 100 at 25 fps a clip may start up to 4 s earl
 
 - `<root>` = `StorageDirectory` (`/var/lib/itbees-recordings`), or with `UsbStorage: true`
   `<mount>/itbees-recordings` on the first USB partition (`UsbLabel` picks one). An unmounted disk is
-  mounted at `UsbMountPoint` (FAT/exFAT/NTFS with the app's uid/gid, ext4 as is). The systemd unit
-  checks the mount before starting, and the recorder is stopped when the disk disappears.
+  mounted at `UsbMountPoint` (FAT/exFAT/NTFS with the app's uid/gid, ext4 as is). While no USB disk is
+  usable the recordings go to `StorageDirectory` on the device (`UsbFallbackToStorageDirectory`, on by default;
+  off = record nothing), and a disk plugged in later is picked up on the next pass (about 30 s).
+  `RecordingStatus.UsbDiskInUse` tells which one is used.
 - **Overwriting:** when the file system is fuller than `MaxDiskUsagePercent` (90 %, as `df` shows it)
   or our files exceed `MaxStorageMegabytes` (optional), the oldest files are deleted - continuous
   recordings and clips alike, by age - until the usage is 1 point under the limit. The file a camera is

@@ -65,14 +65,50 @@ public class StorageTests
     }
 
     [Fact]
-    public async Task Without_a_usb_disk_there_is_no_storage_and_no_sd_card_fallback()
+    public async Task Without_a_usb_disk_recordings_go_to_the_device_folder_until_one_is_plugged_in()
+    {
+        using var temp = new TempDirectory();
+        var deviceFolder = Path.Combine(temp.Path, "storage");
+        var mountPoint = Path.Combine(temp.Path, "mnt");
+        var linux = new FakeLinuxSystem { BlockDevicesJson = """{"blockdevices":[{"name":"mmcblk0","tran":null,"fstype":"ext4","mountpoint":"/"}]}""" };
+        var options = new RecordingsOptions { UsbStorage = true, StorageDirectory = deviceFolder, UsbMountPoint = mountPoint };
+        var locator = new StorageLocator(Options.Create(options), linux, NullLogger<StorageLocator>.Instance);
+
+        var withoutUsb = await locator.LocateAsync(linux.Identity, CancellationToken.None);
+
+        Assert.Equal(new StorageLocation(deviceFolder, null), withoutUsb);
+        Assert.True(Directory.Exists(withoutUsb!.RecordingsDirectory));
+        Assert.Empty(linux.Mounts);
+
+        linux.BlockDevicesJson = Lsblk;
+        var withUsb = await locator.LocateAsync(linux.Identity, CancellationToken.None);
+
+        Assert.Equal(new StorageLocation(Path.Combine(mountPoint, "itbees-recordings"), mountPoint), withUsb);
+    }
+
+    [Fact]
+    public async Task Without_a_usb_disk_and_without_fallback_nothing_is_recorded()
     {
         var linux = new FakeLinuxSystem { BlockDevicesJson = """{"blockdevices":[{"name":"mmcblk0","tran":null,"fstype":"ext4","mountpoint":"/"}]}""" };
-        var locator = new StorageLocator(Options.Create(new RecordingsOptions { UsbStorage = true }), linux, NullLogger<StorageLocator>.Instance);
+        var options = new RecordingsOptions { UsbStorage = true, UsbFallbackToStorageDirectory = false };
+        var locator = new StorageLocator(Options.Create(options), linux, NullLogger<StorageLocator>.Instance);
 
         Assert.Null(await locator.LocateAsync(linux.Identity, CancellationToken.None));
         Assert.Equal("No USB disk with a file system is plugged in", locator.Problem);
-        Assert.Empty(linux.Mounts);
+    }
+
+    [Fact]
+    public async Task Usb_disk_that_cannot_be_mounted_falls_back_to_the_device_folder()
+    {
+        using var temp = new TempDirectory();
+        var deviceFolder = Path.Combine(temp.Path, "storage");
+        var linux = new FakeLinuxSystem { BlockDevicesJson = Lsblk, MountError = new RecordingsException("'sudo -n mount' failed") };
+        var options = new RecordingsOptions { UsbStorage = true, StorageDirectory = deviceFolder, UsbMountPoint = Path.Combine(temp.Path, "mnt") };
+        var locator = new StorageLocator(Options.Create(options), linux, NullLogger<StorageLocator>.Instance);
+
+        var location = await locator.LocateAsync(linux.Identity, CancellationToken.None);
+
+        Assert.Equal(new StorageLocation(deviceFolder, null), location);
     }
 
     private const long Mb = 1024 * 1024;

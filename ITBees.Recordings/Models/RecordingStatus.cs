@@ -45,8 +45,11 @@ public sealed record RecordingStatus
     public bool Installed { get; init; }
     public bool ServiceActive { get; init; }
 
-    /// <summary>Root of recordings and clips, null when there is no storage (e.g. no USB disk).</summary>
+    /// <summary>Root of recordings and clips, null when there is no storage.</summary>
     public string? StorageDirectory { get; init; }
+
+    /// <summary>True while recording onto the USB disk, false on the device's own storage.</summary>
+    public bool UsbDiskInUse { get; init; }
 
     public long? FreeSpaceBytes { get; init; }
 
