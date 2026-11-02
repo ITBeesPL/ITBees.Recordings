@@ -5,6 +5,30 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageId>ITBees.Recordings</PackageId>
+    <Version>8.0.1</Version>
+    <Authors>ITBees</Authors>
+    <Description>Continuous camera recording on Linux devices with MediaMTX: installs and supervises MediaMTX as a systemd service at runtime, records RTSP streams (resolved over ONVIF) into fixed-length fMP4 segments with retention and a free-space guard, optionally on a USB disk, and cuts event clips (e.g. 45 s before and after a parking event) from the continuous recording. Camera stream and encoder settings (resolution, bitrate, fps, GOP) are set over ONVIF to control file size. No dependency on FAS - usable from device-side apps.</Description>
+    <PackageTags>recording;camera;rtsp;onvif;mediamtx;nvr;parking;itbees</PackageTags>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/ITBeesPL/ITBees.Recordings</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ITBees.Recordings.Tests" />
+  </ItemGroup>
 
 </Project>
