@@ -41,9 +41,16 @@ public class RecordingsOptions
     /// <summary>
     /// Record onto a USB disk (local-server column). The first USB partition (or the one matching
     /// <see cref="UsbLabel"/>) is used where it is mounted, otherwise it is mounted at <see cref="UsbMountPoint"/>.
-    /// Without the disk nothing is recorded - the SD card is never used as a fallback.
+    /// Without the disk the recordings go to <see cref="StorageDirectory"/> on the device (see
+    /// <see cref="UsbFallbackToStorageDirectory"/>); a disk plugged in later is picked up on the next pass.
     /// </summary>
     public bool UsbStorage { get; set; }
+
+    /// <summary>
+    /// With <see cref="UsbStorage"/>: record to <see cref="StorageDirectory"/> while no USB disk is usable
+    /// (<see cref="MaxDiskUsagePercent"/> keeps the device's own storage from filling up). False = record nothing then.
+    /// </summary>
+    public bool UsbFallbackToStorageDirectory { get; set; } = true;
 
     public string UsbMountPoint { get; set; } = "/mnt/itbees-recordings";
 

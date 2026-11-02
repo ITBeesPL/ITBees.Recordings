@@ -75,8 +75,15 @@ internal sealed class FakeLinuxSystem : ILinuxSystem
 
     public Task<string> ListBlockDevicesAsync(CancellationToken cancellationToken) => Task.FromResult(BlockDevicesJson);
 
+    public Exception? MountError { get; set; }
+
     public Task MountAsync(string device, string mountPoint, string? fileSystemType, LinuxIdentity owner, CancellationToken cancellationToken)
     {
+        if (MountError != null)
+        {
+            return Task.FromException(MountError);
+        }
+
         Mounts.Add((device, mountPoint, fileSystemType));
         MountPoints.Add(mountPoint);
         Directory.CreateDirectory(mountPoint);
