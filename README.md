@@ -79,7 +79,8 @@ configuration without dropping the other cameras. `Enabled` / `IRecordingManager
 recorder on and off at runtime (e.g. only the device acting as the recorder records): while off nothing is
 installed, and a running service is stopped only after `DisabledStopDelay` (2 min) - a host that decides after
 its start whether to record does not cut the recording at every restart. Storage is checked before anything is
-downloaded. `SetMaxDiskUsagePercent(int)` changes the disk limit at runtime. `IRecordingManager.GetStatus()` and
+downloaded. `SetMaxDiskUsagePercent(int)` changes the disk limit at runtime, `SetUsbStorage(bool)` the storage
+(USB disk or the device folder; recorded files stay where they are). `IRecordingManager.GetStatus()` and
 the `StatusChanged` event report per camera `Recording` / `Connecting` / `Error` / `NoStorage` and `RecordedSince`
 (the oldest segment still on disk).
 On-demand footage: `IEventClipService.ListRecordedAsync` (recorded stretches, gaps = camera offline)

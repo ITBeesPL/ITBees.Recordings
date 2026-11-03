@@ -159,6 +159,21 @@ internal sealed class RecordingManager : IRecordingManager
         }
     }
 
+    public bool UsbStorage => _options.UsbStorage;
+
+    public void SetUsbStorage(bool usbStorage)
+    {
+        if (_options.UsbStorage == usbStorage)
+        {
+            return;
+        }
+
+        // The storage locator reads the same options instance on the next pass, which moves the recorder there.
+        _logger.LogInformation("Recording storage -> {Storage}", usbStorage ? "USB disk when one is usable" : _options.StorageDirectory);
+        _options.UsbStorage = usbStorage;
+        SignalChange();
+    }
+
     private void SignalChange() =>
         Interlocked.Exchange(ref _changed, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
 

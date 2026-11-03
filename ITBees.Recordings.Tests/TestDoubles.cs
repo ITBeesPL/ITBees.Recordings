@@ -216,6 +216,8 @@ internal sealed class FakeRecordingManager : IRecordingManager
     public void SetEnabled(bool enabled) => Enabled = enabled;
     public int MaxDiskUsagePercent { get; private set; } = 90;
     public void SetMaxDiskUsagePercent(int percent) => MaxDiskUsagePercent = percent;
+    public bool UsbStorage { get; private set; }
+    public void SetUsbStorage(bool usbStorage) => UsbStorage = usbStorage;
     public RecordingCameraState State { get; set; } = RecordingCameraState.Recording;
 
     public void Configure(IEnumerable<RecordingCameraDefinition> cameras)

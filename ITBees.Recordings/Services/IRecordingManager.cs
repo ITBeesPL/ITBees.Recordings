@@ -30,6 +30,15 @@ public interface IRecordingManager
 
     int MaxDiskUsagePercent { get; }
 
+    /// <summary>
+    /// Changes <see cref="RecordingsOptions.UsbStorage"/> at runtime: true = a USB disk while one is usable,
+    /// false = <see cref="RecordingsOptions.StorageDirectory"/> on the device even with a disk plugged in. Applied by
+    /// the next maintenance pass, which starts at once; files already recorded stay where they are.
+    /// </summary>
+    void SetUsbStorage(bool usbStorage);
+
+    bool UsbStorage { get; }
+
     RecordingStatus GetStatus();
 
     /// <summary>Directory clips are written to, null while there is no storage (e.g. no USB disk).</summary>

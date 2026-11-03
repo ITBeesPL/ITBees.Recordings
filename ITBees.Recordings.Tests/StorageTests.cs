@@ -87,6 +87,24 @@ public class StorageTests
     }
 
     [Fact]
+    public async Task Usb_switched_off_records_to_the_device_folder_with_a_disk_plugged_in()
+    {
+        using var temp = new TempDirectory();
+        var deviceFolder = Path.Combine(temp.Path, "storage");
+        var mountPoint = Path.Combine(temp.Path, "mnt");
+        var linux = new FakeLinuxSystem { BlockDevicesJson = Lsblk };
+        var options = new RecordingsOptions { UsbStorage = true, StorageDirectory = deviceFolder, UsbMountPoint = mountPoint };
+        var locator = new StorageLocator(Options.Create(options), linux, NullLogger<StorageLocator>.Instance);
+
+        var onUsb = await locator.LocateAsync(linux.Identity, CancellationToken.None);
+        options.UsbStorage = false;
+        var onDevice = await locator.LocateAsync(linux.Identity, CancellationToken.None);
+
+        Assert.Equal(mountPoint, onUsb!.MountPoint);
+        Assert.Equal(new StorageLocation(deviceFolder, null), onDevice);
+    }
+
+    [Fact]
     public async Task Without_a_usb_disk_and_without_fallback_nothing_is_recorded()
     {
         var linux = new FakeLinuxSystem { BlockDevicesJson = """{"blockdevices":[{"name":"mmcblk0","tran":null,"fstype":"ext4","mountpoint":"/"}]}""" };

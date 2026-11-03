@@ -179,6 +179,20 @@ public class RecordingManagerTests
     }
 
     [Fact]
+    public void Storage_choice_changes_at_runtime_and_wakes_the_maintenance_loop()
+    {
+        var options = new RecordingsOptions { UsbStorage = true };
+        var manager = new RecordingManager(Options.Create(options), _linux, _host, _client, _resolver, _storage, _guard, _time, NullLogger<RecordingManager>.Instance);
+        var changed = manager.Changed;
+
+        manager.SetUsbStorage(false);
+
+        Assert.False(options.UsbStorage);
+        Assert.False(manager.UsbStorage);
+        Assert.True(changed.IsCompleted);
+    }
+
+    [Fact]
     public async Task Missed_config_reload_restarts_the_service()
     {
         var manager = CreateManager(Camera("wjazd", "192.168.10.3"));
