@@ -33,6 +33,9 @@ public sealed record RecordingCameraStatus
     public long InboundBytes { get; init; }
     public long FramesInError { get; init; }
 
+    /// <summary>Start of the oldest continuous recording of the camera still on disk.</summary>
+    public DateTimeOffset? RecordedSince { get; init; }
+
     /// <summary>What is recorded, e.g. <c>profile2: H264 704x576 25 fps 768 kb/s GOP 50</c> (null with an explicit RtspUrl).</summary>
     public string? StreamDescription { get; init; }
 }

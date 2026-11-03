@@ -43,6 +43,7 @@ internal sealed class RecordingManager : IRecordingManager
     private string? _error;
     private volatile bool _enabled;
     private bool _disabledHandled;
+    private DateTimeOffset _disabledSince;
 
     public RecordingManager(
         IOptions<RecordingsOptions> options,
@@ -65,6 +66,7 @@ internal sealed class RecordingManager : IRecordingManager
         _timeProvider = timeProvider;
         _logger = logger;
         _enabled = _options.Enabled;
+        _disabledSince = timeProvider.GetUtcNow();
         Configure(_options.Cameras);
     }
 
@@ -131,8 +133,30 @@ internal sealed class RecordingManager : IRecordingManager
         }
 
         _enabled = enabled;
+        if (enabled == false)
+        {
+            _disabledSince = _timeProvider.GetUtcNow();
+        }
+
         _logger.LogInformation("Recording {State}", enabled ? "enabled" : "disabled");
         SignalChange();
+    }
+
+    public int MaxDiskUsagePercent => _options.MaxDiskUsagePercent;
+
+    public void SetMaxDiskUsagePercent(int percent)
+    {
+        if (percent is < 1 or > 99)
+        {
+            throw new ArgumentOutOfRangeException(nameof(percent), percent, "Disk usage limit must be 1-99 %");
+        }
+
+        // The storage guard reads the same options instance on its next pass.
+        if (_options.MaxDiskUsagePercent != percent)
+        {
+            _logger.LogInformation("Disk usage limit {Old}% -> {New}%", _options.MaxDiskUsagePercent, percent);
+            _options.MaxDiskUsagePercent = percent;
+        }
     }
 
     private void SignalChange() =>
@@ -270,10 +294,15 @@ internal sealed class RecordingManager : IRecordingManager
         return true;
     }
 
-    /// <summary>Once per switch-off (and once after a start disabled): stop a recorder left running, e.g. by a device that was the recorder before.</summary>
+    /// <summary>
+    /// Once per switch-off (and once after a start disabled): stop a recorder left running, e.g. by a device that was
+    /// the recorder before. Only after <see cref="RecordingsOptions.DisabledStopDelay"/>: a host that learns only after
+    /// its start whether it records (Octopark loads the parking settings first) must not cut the recording at every
+    /// restart - the service is meant to keep recording while the host restarts or updates.
+    /// </summary>
     private async Task HandleDisabledAsync(CancellationToken cancellationToken)
     {
-        if (_disabledHandled)
+        if (_disabledHandled || _timeProvider.GetUtcNow() - _disabledSince < _options.DisabledStopDelay)
         {
             return;
         }
@@ -413,6 +442,26 @@ internal sealed class RecordingManager : IRecordingManager
         }
     }
 
+    /// <summary>Start of the oldest segment still on disk (segment names start with their local start time).</summary>
+    private DateTimeOffset? OldestRecording(string cameraId)
+    {
+        var directory = _storage == null ? null : Path.Combine(_storage.RecordingsDirectory, cameraId);
+        if (directory == null || Directory.Exists(directory) == false)
+        {
+            return null;
+        }
+
+        try
+        {
+            var oldest = Directory.EnumerateFiles(directory, "*.mp4").Select(Path.GetFileNameWithoutExtension).Min(StringComparer.Ordinal);
+            return MediaMtxConfiguration.SegmentStart(oldest, _timeProvider.LocalTimeZone);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     private void Update(CameraSlot slot, RecordingCameraState state, string? error, MediaMtxPathInfo? path = null)
     {
         var previous = slot.Status;
@@ -424,6 +473,7 @@ internal sealed class RecordingManager : IRecordingManager
             InboundBytes = path?.InboundBytes ?? 0,
             FramesInError = path?.FramesInError ?? 0,
             StreamDescription = slot.Stream?.Description,
+            RecordedSince = OldestRecording(slot.Definition.Id),
         };
 
         if (previous.State == state)

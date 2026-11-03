@@ -25,6 +25,11 @@ public interface IRecordingManager
     /// </summary>
     void SetEnabled(bool enabled);
 
+    /// <summary>Changes <see cref="RecordingsOptions.MaxDiskUsagePercent"/> at runtime (1-99); applied on the next maintenance pass.</summary>
+    void SetMaxDiskUsagePercent(int percent);
+
+    int MaxDiskUsagePercent { get; }
+
     RecordingStatus GetStatus();
 
     /// <summary>Directory clips are written to, null while there is no storage (e.g. no USB disk).</summary>

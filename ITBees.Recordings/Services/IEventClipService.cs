@@ -26,4 +26,16 @@ public interface IEventClipService
 
     /// <summary>Cuts every queued clip that is due. Called by the background worker.</summary>
     Task ProcessDueJobsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Clip packages (groups and days), the most recently written first; empty without storage.</summary>
+    IReadOnlyList<ClipPackage> ListPackages(int skip = 0, int take = 50);
+
+    /// <summary>Clips of one package, oldest event first; empty when the package does not exist.</summary>
+    IReadOnlyList<ClipInfo> ListClips(string package);
+
+    /// <summary>
+    /// Full path of a clip from its <see cref="ClipInfo.RelativePath"/>, or null when it does not exist or points
+    /// outside the clips directory.
+    /// </summary>
+    string? GetClipPath(string relativePath);
 }

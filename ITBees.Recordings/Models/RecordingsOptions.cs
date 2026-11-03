@@ -6,9 +6,16 @@ public class RecordingsOptions
 
     /// <summary>
     /// Recording at startup. The host can switch it later with <c>IRecordingManager.SetEnabled</c> (e.g. only the
-    /// device acting as the recorder records); while disabled nothing is installed and a running service is stopped.
+    /// device acting as the recorder records); while disabled nothing is installed and a running service is stopped
+    /// after <see cref="DisabledStopDelay"/>.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// How long recording has to stay disabled before a running recorder service is stopped. Covers hosts that decide
+    /// only after their start whether to record, so a restart of the host does not interrupt the recording.
+    /// </summary>
+    public TimeSpan DisabledStopDelay { get; set; } = TimeSpan.FromMinutes(2);
 
     /// <summary>
     /// When true (default) the library installs MediaMTX, writes its configuration and keeps the systemd

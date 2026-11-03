@@ -251,6 +251,97 @@ internal sealed class EventClipService : IEventClipService
         }
     }
 
+    public IReadOnlyList<ClipPackage> ListPackages(int skip = 0, int take = 50)
+    {
+        var clipsDirectory = _recordingManager.ClipsDirectory;
+        if (clipsDirectory == null || Directory.Exists(clipsDirectory) == false)
+        {
+            return Array.Empty<ClipPackage>();
+        }
+
+        return new DirectoryInfo(clipsDirectory).EnumerateDirectories()
+            .OrderByDescending(x => x.LastWriteTimeUtc)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Clamp(take, 1, 500))
+            .Select(ToPackage)
+            .Where(x => x.ClipCount > 0)
+            .ToList();
+    }
+
+    public IReadOnlyList<ClipInfo> ListClips(string package)
+    {
+        var clipsDirectory = _recordingManager.ClipsDirectory;
+        if (clipsDirectory == null || string.IsNullOrWhiteSpace(package) || package != SafeName(package))
+        {
+            return Array.Empty<ClipInfo>();
+        }
+
+        var directory = new DirectoryInfo(Path.Combine(clipsDirectory, package));
+        if (directory.Exists == false)
+        {
+            return Array.Empty<ClipInfo>();
+        }
+
+        return directory.EnumerateFiles("*.mp4")
+            .OrderBy(x => x.Name, StringComparer.Ordinal)
+            .Select(x => new ClipInfo
+            {
+                RelativePath = $"{package}/{x.Name}",
+                Package = package,
+                SizeBytes = x.Length,
+                Metadata = ReadMetadata(Path.ChangeExtension(x.FullName, StorageGuard.ClipMetadataExtension)),
+            })
+            .ToList();
+    }
+
+    public string? GetClipPath(string relativePath)
+    {
+        var clipsDirectory = _recordingManager.ClipsDirectory;
+        if (clipsDirectory == null || string.IsNullOrWhiteSpace(relativePath)
+                                   || relativePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) == false)
+        {
+            return null;
+        }
+
+        // Only files inside the clips directory - the path comes from a panel request.
+        var root = Path.GetFullPath(clipsDirectory) + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(Path.Combine(clipsDirectory, relativePath));
+        return fullPath.StartsWith(root, StringComparison.Ordinal) && File.Exists(fullPath) ? fullPath : null;
+    }
+
+    private static ClipPackage ToPackage(DirectoryInfo directory)
+    {
+        var files = directory.EnumerateFiles("*.mp4").ToList();
+        var times = files.Select(x => EventTimeFromName(x.Name)).Where(x => x != null).Select(x => x!.Value).ToList();
+        return new ClipPackage
+        {
+            Name = directory.Name,
+            ClipCount = files.Count,
+            SizeBytes = files.Sum(x => x.Length),
+            FirstEventTime = times.Count > 0 ? times.Min() : null,
+            LastEventTime = times.Count > 0 ? times.Max() : null,
+        };
+    }
+
+    /// <summary>Clip names start with the event time, <c>yyyyMMddTHHmmssZ</c>.</summary>
+    internal static DateTimeOffset? EventTimeFromName(string fileName) =>
+        fileName.Length >= 16 && DateTimeOffset.TryParseExact(fileName[..16], "yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var time)
+            ? time
+            : null;
+
+    private static ClipMetadata? ReadMetadata(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? JsonSerializer.Deserialize<ClipMetadata>(File.ReadAllText(path), MetadataJsonOptions) : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
     private bool IsRecording(string cameraId) =>
         _recordingManager.GetStatus().Cameras.Any(x => string.Equals(x.CameraId, cameraId, StringComparison.OrdinalIgnoreCase) && x.State == RecordingCameraState.Recording);
 

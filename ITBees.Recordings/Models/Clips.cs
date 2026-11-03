@@ -110,6 +110,34 @@ public sealed record ClipResult
     public string? Error { get; init; }
 }
 
+/// <summary>A folder of clips: one group (e.g. a parking session) or one day of clips without a group.</summary>
+public sealed record ClipPackage
+{
+    /// <summary>Folder name: the group id, or <c>yyyy-MM-dd</c>.</summary>
+    public string Name { get; init; } = string.Empty;
+
+    public int ClipCount { get; init; }
+    public long SizeBytes { get; init; }
+
+    /// <summary>Event time of the first and the last clip (UTC, from the file names).</summary>
+    public DateTimeOffset? FirstEventTime { get; init; }
+
+    public DateTimeOffset? LastEventTime { get; init; }
+}
+
+/// <summary>One clip on disk with its metadata.</summary>
+public sealed record ClipInfo
+{
+    /// <summary><c>{package}/{file}.mp4</c> - what <c>IEventClipService.GetClipPath</c> takes.</summary>
+    public string RelativePath { get; init; } = string.Empty;
+
+    public string Package { get; init; } = string.Empty;
+    public long SizeBytes { get; init; }
+
+    /// <summary>The clip's <c>.json</c>; null when it has none (e.g. an older clip).</summary>
+    public ClipMetadata? Metadata { get; init; }
+}
+
 public sealed class ClipFinishedEventArgs : EventArgs
 {
     public ClipFinishedEventArgs(ClipResult result)

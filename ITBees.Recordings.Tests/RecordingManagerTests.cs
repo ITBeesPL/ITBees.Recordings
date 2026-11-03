@@ -113,6 +113,10 @@ public class RecordingManagerTests
 
         manager.SetEnabled(false);
         await manager.RunMaintenanceAsync(CancellationToken.None);
+        Assert.Equal(0, _host.Stops);
+
+        _time.Advance(TimeSpan.FromMinutes(2));
+        await manager.RunMaintenanceAsync(CancellationToken.None);
         await manager.RunMaintenanceAsync(CancellationToken.None);
 
         Assert.Equal(1, _host.Stops);
@@ -133,10 +137,45 @@ public class RecordingManagerTests
         var manager = new RecordingManager(Options.Create(options), _linux, _host, _client, _resolver, _storage, _guard, _time, NullLogger<RecordingManager>.Instance);
 
         await manager.RunMaintenanceAsync(CancellationToken.None);
+        Assert.Equal(0, _host.Stops);
+
+        _time.Advance(TimeSpan.FromMinutes(2));
+        await manager.RunMaintenanceAsync(CancellationToken.None);
 
         Assert.Equal(0, _host.Installs);
         Assert.Equal(1, _host.Stops);
         Assert.Equal(0, _resolver.Calls);
+    }
+
+    [Fact]
+    public async Task Host_that_enables_recording_soon_after_its_start_keeps_the_recorder_running()
+    {
+        // A restarted host: the recorder service still runs from before, the host decides 20 s after its start.
+        _host.Active = true;
+        var options = new RecordingsOptions { Enabled = false, Cameras = new List<RecordingCameraDefinition> { Camera("wjazd", "192.168.10.3") } };
+        var manager = new RecordingManager(Options.Create(options), _linux, _host, _client, _resolver, _storage, _guard, _time, NullLogger<RecordingManager>.Instance);
+        await manager.RunMaintenanceAsync(CancellationToken.None);
+
+        _time.Advance(TimeSpan.FromSeconds(20));
+        manager.SetEnabled(true);
+        await manager.RunMaintenanceAsync(CancellationToken.None);
+        _time.Advance(TimeSpan.FromMinutes(5));
+        await manager.RunMaintenanceAsync(CancellationToken.None);
+
+        Assert.Equal(0, _host.Stops);
+        Assert.True(_host.Active);
+    }
+
+    [Fact]
+    public void Disk_limit_changes_at_runtime_within_bounds()
+    {
+        var options = new RecordingsOptions();
+        var manager = new RecordingManager(Options.Create(options), _linux, _host, _client, _resolver, _storage, _guard, _time, NullLogger<RecordingManager>.Instance);
+
+        manager.SetMaxDiskUsagePercent(80);
+
+        Assert.Equal(80, options.MaxDiskUsagePercent);
+        Assert.Throws<ArgumentOutOfRangeException>(() => manager.SetMaxDiskUsagePercent(100));
     }
 
     [Fact]

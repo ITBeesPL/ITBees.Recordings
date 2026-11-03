@@ -104,6 +104,8 @@ internal static class MediaMtxConfiguration
         builder.AppendLine($"ExecStart={binaryPath} {configPath}");
         builder.AppendLine("Restart=always");
         builder.AppendLine("RestartSec=10");
+        // MediaMTX can take long to quit while a camera is reconnecting; fMP4 parts are already on disk, so kill it soon.
+        builder.AppendLine("TimeoutStopSec=15");
         // The host application (barrier, payments) always wins over recording.
         builder.AppendLine("Nice=10");
         builder.AppendLine("IOSchedulingClass=best-effort");
@@ -114,6 +116,22 @@ internal static class MediaMtxConfiguration
         builder.AppendLine("[Install]");
         builder.AppendLine("WantedBy=multi-user.target");
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Start of a segment from its file name (<see cref="SegmentNamePattern"/>, the device's local time), e.g.
+    /// <c>2026-11-02_12-00-00-123456</c>; null for another name.
+    /// </summary>
+    internal static DateTimeOffset? SegmentStart(string? fileNameWithoutExtension, TimeZoneInfo timeZone)
+    {
+        if (fileNameWithoutExtension == null
+            || DateTime.TryParseExact(fileNameWithoutExtension, "yyyy-MM-dd_HH-mm-ss-ffffff", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var local) == false)
+        {
+            return null;
+        }
+
+        return new DateTimeOffset(local, timeZone.GetUtcOffset(local));
     }
 
     // Single-quoted YAML scalar: nothing is special inside except the quote itself.

@@ -77,10 +77,15 @@ eventClipService.ClipFinished += (_, e) =>
 The camera set can change at runtime with `IRecordingManager.Configure(...)`; MediaMTX reloads its
 configuration without dropping the other cameras. `Enabled` / `IRecordingManager.SetEnabled(bool)` switch the
 recorder on and off at runtime (e.g. only the device acting as the recorder records): while off nothing is
-installed and a running service is stopped. Storage is checked before anything is downloaded. `IRecordingManager.GetStatus()` and the
-`StatusChanged` event report per camera `Recording` / `Connecting` / `Error` / `NoStorage`.
+installed, and a running service is stopped only after `DisabledStopDelay` (2 min) - a host that decides after
+its start whether to record does not cut the recording at every restart. Storage is checked before anything is
+downloaded. `SetMaxDiskUsagePercent(int)` changes the disk limit at runtime. `IRecordingManager.GetStatus()` and
+the `StatusChanged` event report per camera `Recording` / `Connecting` / `Error` / `NoStorage` and `RecordedSince`
+(the oldest segment still on disk).
 On-demand footage: `IEventClipService.ListRecordedAsync` (recorded stretches, gaps = camera offline)
-and `ExportAsync` (any range to a file).
+and `ExportAsync` (any range to a file). Browsing clips: `ListPackages(skip, take)` (groups and days, newest
+first), `ListClips(package)` (with the `.json` metadata) and `GetClipPath(relativePath)` (refuses paths outside
+the clips directory).
 
 ## Quality and size
 

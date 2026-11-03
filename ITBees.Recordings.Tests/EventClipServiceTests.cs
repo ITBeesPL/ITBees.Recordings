@@ -204,6 +204,47 @@ public sealed class EventClipServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Packages_and_their_clips_are_listed_with_metadata()
+    {
+        var service = CreateService();
+        service.Enqueue(Request("e1", T0) with { GroupId = "session-1", Metadata = new Dictionary<string, string> { ["plate"] = "WB784CX" } });
+        service.Enqueue(Request("e2", T0.AddSeconds(30)) with { GroupId = "session-1" });
+        service.Enqueue(Request("e3", T0.AddSeconds(10)));
+        _time.Advance(TimeSpan.FromMinutes(2));
+        Record(T0, _time.Now);
+        await service.ProcessDueJobsAsync();
+
+        var packages = service.ListPackages();
+        var session = Assert.Single(packages, x => x.Name == "session-1");
+        Assert.Equal(2, session.ClipCount);
+        Assert.Equal(T0, session.FirstEventTime);
+        Assert.Equal(T0.AddSeconds(30), session.LastEventTime);
+        Assert.Contains(packages, x => x.Name == "2026-11-02" && x.ClipCount == 1);
+
+        var clips = service.ListClips("session-1");
+        Assert.Equal(new[] { "session-1/20261102T110000Z_wjazd_entry_e1.mp4", "session-1/20261102T110030Z_wjazd_entry_e2.mp4" }, clips.Select(x => x.RelativePath));
+        Assert.Equal("WB784CX", clips[0].Metadata!.Metadata["plate"]);
+        Assert.Equal(ClipOutcome.Completed, clips[0].Metadata!.Outcome);
+        Assert.NotNull(service.GetClipPath(clips[0].RelativePath));
+    }
+
+    [Theory]
+    [InlineData("../state/clip-jobs.json")]
+    [InlineData("session-1/../../secret.mp4")]
+    [InlineData("session-1/missing.mp4")]
+    [InlineData("")]
+    public void Clip_paths_outside_the_clips_directory_are_refused(string relativePath)
+    {
+        Assert.Null(CreateService().GetClipPath(relativePath));
+    }
+
+    [Fact]
+    public void Package_names_with_path_characters_are_refused()
+    {
+        Assert.Empty(CreateService().ListClips("../state"));
+    }
+
+    [Fact]
     public async Task Export_writes_what_is_recorded_now()
     {
         var service = CreateService();

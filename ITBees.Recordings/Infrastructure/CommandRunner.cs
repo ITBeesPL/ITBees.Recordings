@@ -63,9 +63,9 @@ internal sealed class CommandRunner : ICommandRunner
             {
                 process.Kill(entireProcessTree: true);
             }
-            catch (InvalidOperationException)
+            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or AggregateException)
             {
-                // Exited in the meantime.
+                // Exited in the meantime, or a child runs as root (sudo) and cannot be killed by us - it ends on its own.
             }
 
             cancellationToken.ThrowIfCancellationRequested();

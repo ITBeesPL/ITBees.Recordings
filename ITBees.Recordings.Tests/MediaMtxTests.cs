@@ -136,6 +136,24 @@ public class MediaMtxTests
     }
 
     [Fact]
+    public void Segment_start_is_read_from_the_file_name_in_device_time()
+    {
+        var warsaw = TimeZoneInfo.CreateCustomTimeZone("test+1", TimeSpan.FromHours(1), "test+1", "test+1");
+
+        Assert.Equal(new DateTimeOffset(2026, 11, 2, 12, 0, 0, 123, TimeSpan.FromHours(1)).AddTicks(4560),
+            MediaMtxConfiguration.SegmentStart("2026-11-02_12-00-00-123456", warsaw));
+        Assert.Null(MediaMtxConfiguration.SegmentStart("not-a-segment", warsaw));
+    }
+
+    [Fact]
+    public void Unit_lets_systemd_kill_a_slow_stop()
+    {
+        var unit = MediaMtxConfiguration.BuildSystemdUnit(new RecordingsOptions(), "/opt/x/mediamtx", "/opt/x/mediamtx.yml", Identity, null);
+
+        Assert.Contains("TimeoutStopSec=15", unit);
+    }
+
+    [Fact]
     public void Times_are_sent_in_utc_rfc3339()
     {
         Assert.Equal("2026-11-02T11:59:15.250Z", MediaMtxClient.FormatTime(new DateTimeOffset(2026, 11, 2, 12, 59, 15, 250, TimeSpan.FromHours(1))));
