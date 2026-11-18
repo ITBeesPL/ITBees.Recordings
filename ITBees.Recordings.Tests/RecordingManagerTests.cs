@@ -193,6 +193,38 @@ public class RecordingManagerTests
     }
 
     [Fact]
+    public void Storage_directory_changes_at_runtime_and_goes_back_to_the_configured_one()
+    {
+        var options = new RecordingsOptions { StorageDirectory = "/home/pi/itbees-recordings/storage" };
+        var manager = new RecordingManager(Options.Create(options), _linux, _host, _client, _resolver, _storage, _guard, _time, NullLogger<RecordingManager>.Instance);
+        var changed = manager.Changed;
+
+        manager.SetStorageDirectory(" /mnt/data//recordings/ ");
+
+        Assert.Equal("/mnt/data/recordings", options.StorageDirectory);
+        Assert.Equal("/mnt/data/recordings", manager.StorageDirectory);
+        Assert.True(changed.IsCompleted);
+
+        manager.SetStorageDirectory(null);
+
+        Assert.Equal("/home/pi/itbees-recordings/storage", options.StorageDirectory);
+    }
+
+    [Theory]
+    [InlineData("recordings")]
+    [InlineData("/mnt/../etc")]
+    [InlineData("/")]
+    [InlineData("//")]
+    public void Storage_directory_must_be_an_absolute_path_without_parent_steps(string directory)
+    {
+        var options = new RecordingsOptions();
+        var manager = new RecordingManager(Options.Create(options), _linux, _host, _client, _resolver, _storage, _guard, _time, NullLogger<RecordingManager>.Instance);
+
+        Assert.Throws<ArgumentException>(() => manager.SetStorageDirectory(directory));
+        Assert.Equal(new RecordingsOptions().StorageDirectory, options.StorageDirectory);
+    }
+
+    [Fact]
     public async Task Missed_config_reload_restarts_the_service()
     {
         var manager = CreateManager(Camera("wjazd", "192.168.10.3"));

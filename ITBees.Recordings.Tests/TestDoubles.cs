@@ -218,6 +218,8 @@ internal sealed class FakeRecordingManager : IRecordingManager
     public void SetMaxDiskUsagePercent(int percent) => MaxDiskUsagePercent = percent;
     public bool UsbStorage { get; private set; }
     public void SetUsbStorage(bool usbStorage) => UsbStorage = usbStorage;
+    public string StorageDirectory { get; private set; } = "/var/lib/itbees-recordings";
+    public void SetStorageDirectory(string? directory) => StorageDirectory = directory ?? "/var/lib/itbees-recordings";
     public RecordingCameraState State { get; set; } = RecordingCameraState.Recording;
 
     public void Configure(IEnumerable<RecordingCameraDefinition> cameras)

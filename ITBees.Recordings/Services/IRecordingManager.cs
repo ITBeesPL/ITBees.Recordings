@@ -39,6 +39,17 @@ public interface IRecordingManager
 
     bool UsbStorage { get; }
 
+    /// <summary>
+    /// Changes <see cref="RecordingsOptions.StorageDirectory"/> at runtime - the folder used when no USB disk is
+    /// (e.g. a disk mounted by the system, <c>/mnt/data/recordings</c>); null goes back to the configured one. The
+    /// path must be absolute, without <c>..</c>. Created (with sudo when its parent is root-owned) on the next
+    /// maintenance pass, which starts at once; files already recorded stay where they are.
+    /// </summary>
+    void SetStorageDirectory(string? directory);
+
+    /// <summary>The folder used when no USB disk is (see <see cref="SetStorageDirectory"/>).</summary>
+    string StorageDirectory { get; }
+
     RecordingStatus GetStatus();
 
     /// <summary>Directory clips are written to, null while there is no storage (e.g. no USB disk).</summary>

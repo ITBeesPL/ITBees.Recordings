@@ -44,6 +44,7 @@ internal sealed class RecordingManager : IRecordingManager
     private volatile bool _enabled;
     private bool _disabledHandled;
     private DateTimeOffset _disabledSince;
+    private readonly string _configuredStorageDirectory;
 
     public RecordingManager(
         IOptions<RecordingsOptions> options,
@@ -67,6 +68,7 @@ internal sealed class RecordingManager : IRecordingManager
         _logger = logger;
         _enabled = _options.Enabled;
         _disabledSince = timeProvider.GetUtcNow();
+        _configuredStorageDirectory = _options.StorageDirectory;
         Configure(_options.Cameras);
     }
 
@@ -172,6 +174,41 @@ internal sealed class RecordingManager : IRecordingManager
         _logger.LogInformation("Recording storage -> {Storage}", usbStorage ? "USB disk when one is usable" : _options.StorageDirectory);
         _options.UsbStorage = usbStorage;
         SignalChange();
+    }
+
+    public string StorageDirectory => _options.StorageDirectory;
+
+    public void SetStorageDirectory(string? directory)
+    {
+        var target = directory == null ? _configuredStorageDirectory : ValidStorageDirectory(directory);
+        if (string.Equals(_options.StorageDirectory, target, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // The storage locator reads the same options instance on the next pass, which moves the recorder there.
+        _logger.LogInformation("Recording storage directory {Old} -> {New}", _options.StorageDirectory, target);
+        _options.StorageDirectory = target;
+        SignalChange();
+    }
+
+    /// <summary>Absolute, without "..", without a trailing slash; "/" itself is refused.</summary>
+    internal static string ValidStorageDirectory(string directory)
+    {
+        var trimmed = directory.Trim();
+        if (trimmed.StartsWith('/') == false || trimmed.Contains('\0') ||
+            trimmed.Split('/').Any(x => x == ".."))
+        {
+            throw new ArgumentException($"Storage directory must be an absolute path without '..': '{directory}'", nameof(directory));
+        }
+
+        var normalized = "/" + string.Join('/', trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries).Where(x => x != "."));
+        if (normalized == "/")
+        {
+            throw new ArgumentException("Storage directory cannot be the root directory", nameof(directory));
+        }
+
+        return normalized;
     }
 
     private void SignalChange() =>
