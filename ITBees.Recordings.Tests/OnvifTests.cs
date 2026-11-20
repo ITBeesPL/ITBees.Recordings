@@ -198,6 +198,220 @@ public class OnvifTests
     private static string Envelope(string body) =>
         $"<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:tt=\"http://www.onvif.org/ver10/schema\"><s:Body>{body}</s:Body></s:Envelope>";
 
+    // Shape of the Cibet tenant gate camera (IPOX, 19.11.2026): the sub stream set to MJPEG, with audio.
+    private const string JpegSubStreamResponse = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:tt="http://www.onvif.org/ver10/schema" xmlns:trt="http://www.onvif.org/ver10/media/wsdl">
+          <SOAP-ENV:Body>
+            <trt:GetProfilesResponse>
+              <trt:Profiles token="profile1" fixed="true">
+                <tt:Name>profile1</tt:Name>
+                <tt:VideoEncoderConfiguration token="VideoEncoderToken1">
+                  <tt:Name>VideoEncoder1</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>H264</tt:Encoding>
+                  <tt:Resolution><tt:Width>2688</tt:Width><tt:Height>1520</tt:Height></tt:Resolution>
+                  <tt:Quality>4</tt:Quality>
+                  <tt:RateControl><tt:FrameRateLimit>25</tt:FrameRateLimit><tt:EncodingInterval>1</tt:EncodingInterval><tt:BitrateLimit>6144</tt:BitrateLimit></tt:RateControl>
+                  <tt:H264><tt:GovLength>50</tt:GovLength><tt:H264Profile>High</tt:H264Profile></tt:H264>
+                </tt:VideoEncoderConfiguration>
+              </trt:Profiles>
+              <trt:Profiles token="profile2" fixed="true">
+                <tt:Name>profile2</tt:Name>
+                <tt:VideoEncoderConfiguration token="VideoEncoderToken2">
+                  <tt:Name>VideoEncoder2</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>JPEG</tt:Encoding>
+                  <tt:Resolution><tt:Width>1280</tt:Width><tt:Height>720</tt:Height></tt:Resolution>
+                  <tt:Quality>4</tt:Quality>
+                  <tt:RateControl><tt:FrameRateLimit>25</tt:FrameRateLimit><tt:EncodingInterval>1</tt:EncodingInterval><tt:BitrateLimit>2048</tt:BitrateLimit></tt:RateControl>
+                  <tt:Multicast><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast>
+                  <tt:SessionTimeout>PT60S</tt:SessionTimeout>
+                </tt:VideoEncoderConfiguration>
+                <tt:AudioEncoderConfiguration token="AudioEncoderToken1">
+                  <tt:Name>AudioEncoder1</tt:Name><tt:UseCount>2</tt:UseCount><tt:Encoding>G711</tt:Encoding>
+                  <tt:Bitrate>64</tt:Bitrate><tt:SampleRate>8</tt:SampleRate>
+                </tt:AudioEncoderConfiguration>
+              </trt:Profiles>
+            </trt:GetProfilesResponse>
+          </SOAP-ENV:Body>
+        </SOAP-ENV:Envelope>
+        """;
+
+    [Fact]
+    public void Profiles_tell_the_codec_and_whether_they_carry_audio()
+    {
+        var profiles = OnvifClient.ParseProfiles(Body(JpegSubStreamResponse));
+
+        Assert.True(profiles[0].IsBrowserPlayable);
+        Assert.Null(profiles[0].AudioEncoderToken);
+        Assert.False(profiles[1].IsBrowserPlayable);
+        Assert.Equal("AudioEncoderToken1", profiles[1].AudioEncoderToken);
+    }
+
+    [Fact]
+    public void Jpeg_encoder_is_switched_to_h264_with_the_block_in_schema_order()
+    {
+        var encoder = OnvifClient.ParseProfiles(Body(JpegSubStreamResponse))[1].VideoEncoder!;
+
+        var changed = OnvifClient.WithH264Encoding(encoder, "Main")!;
+
+        XNamespace tt = "http://www.onvif.org/ver10/schema";
+        Assert.Equal("H264", changed.Element(tt + "Encoding")!.Value);
+        Assert.Equal("1280", changed.Element(tt + "Resolution")!.Element(tt + "Width")!.Value);
+        Assert.Equal("2048", changed.Element(tt + "RateControl")!.Element(tt + "BitrateLimit")!.Value);
+        Assert.Equal("50", changed.Element(tt + "H264")!.Element(tt + "GovLength")!.Value);
+        Assert.Equal("Main", changed.Element(tt + "H264")!.Element(tt + "H264Profile")!.Value);
+        Assert.Equal(new[] { "Name", "UseCount", "Encoding", "Resolution", "Quality", "RateControl", "H264", "Multicast", "SessionTimeout" },
+            changed.Elements().Select(x => x.Name.LocalName));
+        Assert.Equal("VideoEncoderToken2", changed.Attribute("token")!.Value);
+    }
+
+    [Fact]
+    public void H264_encoder_needs_no_switch()
+    {
+        var encoder = OnvifClient.ParseProfiles(Body(JpegSubStreamResponse))[0].VideoEncoder!;
+
+        Assert.Null(OnvifClient.WithH264Encoding(encoder, "Main"));
+    }
+
+    [Fact]
+    public void H264_profiles_are_read_from_the_encoder_options()
+    {
+        var body = Body(Envelope("""
+            <trt:GetVideoEncoderConfigurationOptionsResponse xmlns:trt="http://www.onvif.org/ver10/media/wsdl"><trt:Options>
+            <tt:JPEG><tt:ResolutionsAvailable><tt:Width>1280</tt:Width><tt:Height>720</tt:Height></tt:ResolutionsAvailable></tt:JPEG>
+            <tt:H264><tt:ResolutionsAvailable><tt:Width>1280</tt:Width><tt:Height>720</tt:Height></tt:ResolutionsAvailable>
+            <tt:H264ProfilesSupported>Baseline</tt:H264ProfilesSupported><tt:H264ProfilesSupported>Main</tt:H264ProfilesSupported><tt:H264ProfilesSupported>High</tt:H264ProfilesSupported></tt:H264>
+            </trt:Options></trt:GetVideoEncoderConfigurationOptionsResponse>
+            """));
+
+        var supported = OnvifClient.ParseH264Profiles(body);
+
+        Assert.Equal(new[] { "Baseline", "Main", "High" }, supported);
+        Assert.Equal("Main", StreamSourceResolver.PickH264Profile(supported));
+        Assert.Empty(OnvifClient.ParseH264Profiles(Body(Envelope("<trt:GetVideoEncoderConfigurationOptionsResponse xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\"/>"))));
+    }
+
+    [Fact]
+    public async Task Mjpeg_sub_stream_is_switched_to_h264_and_recorded_without_audio()
+    {
+        var client = new FakeOnvifClient(OnvifClient.ParseProfiles(Body(JpegSubStreamResponse)));
+        var resolver = new StreamSourceResolver(new FakeOnvifFactory(client), NullLogger<StreamSourceResolver>.Instance);
+        var camera = new RecordingCameraDefinition { Id = "cam1", Host = "192.168.74.102", Username = "admin", Password = "p", Quality = new RecordingQuality { Stream = RecordingStream.Sub } };
+
+        var stream = await resolver.ResolveAsync(camera, CancellationToken.None);
+
+        Assert.Equal("rtsp://admin:p@192.168.74.102:554/profile2", stream.SourceUrl);
+        Assert.StartsWith("profile2: H264 1280x720 25 fps 2048 kb/s", stream.Description);
+        XNamespace tt = "http://www.onvif.org/ver10/schema";
+        Assert.Equal("H264", Assert.Single(client.EncoderWrites).Element(tt + "Encoding")!.Value);
+        Assert.Equal(new[] { "profile2" }, client.AudioRemovedFrom);
+    }
+
+    [Fact]
+    public async Task Camera_refusing_h264_makes_the_next_sharper_h264_profile_recorded()
+    {
+        var client = new FakeOnvifClient(OnvifClient.ParseProfiles(Body(JpegSubStreamResponse))) { RefuseEncoderWrites = true };
+        var resolver = new StreamSourceResolver(new FakeOnvifFactory(client), NullLogger<StreamSourceResolver>.Instance);
+        var camera = new RecordingCameraDefinition { Id = "cam1", Host = "192.168.74.102", Quality = new RecordingQuality { Stream = RecordingStream.Sub } };
+
+        var stream = await resolver.ResolveAsync(camera, CancellationToken.None);
+
+        Assert.Equal("rtsp://192.168.74.102:554/profile1", stream.SourceUrl);
+        Assert.DoesNotContain("not playable", stream.Description);
+        Assert.Empty(client.AudioRemovedFrom);
+    }
+
+    [Fact]
+    public async Task Camera_without_any_h264_is_recorded_as_it_is_and_marked()
+    {
+        var jpegOnly = OnvifClient.ParseProfiles(Body(JpegSubStreamResponse)).Skip(1).ToList();
+        var client = new FakeOnvifClient(jpegOnly) { RefuseEncoderWrites = true, RefuseAudioRemoval = true };
+        var resolver = new StreamSourceResolver(new FakeOnvifFactory(client), NullLogger<StreamSourceResolver>.Instance);
+        var camera = new RecordingCameraDefinition { Id = "cam1", Host = "192.168.74.102", Quality = new RecordingQuality { Stream = RecordingStream.Sub } };
+
+        var stream = await resolver.ResolveAsync(camera, CancellationToken.None);
+
+        Assert.Equal("rtsp://192.168.74.102:554/profile2", stream.SourceUrl);
+        Assert.EndsWith("not playable in browsers", stream.Description);
+    }
+
+    [Fact]
+    public void Playable_alternative_is_never_blurrier_when_a_sharper_one_exists()
+    {
+        var profiles = OnvifClient.ParseProfiles(Body(ProfilesResponse)).ToList();
+        var jpeg = profiles[2] with { VideoEncoder = profiles[2].VideoEncoder! with { Encoding = "JPEG" } };
+
+        var alternative = StreamSourceResolver.SelectPlayableAlternative(new[] { profiles[0], profiles[1], jpeg }, jpeg);
+
+        Assert.Equal("profile1", alternative!.Token);
+    }
+
+    private sealed class FakeOnvifFactory : IOnvifClientFactory
+    {
+        private readonly FakeOnvifClient _client;
+
+        public FakeOnvifFactory(FakeOnvifClient client) => _client = client;
+
+        public IOnvifClient Create(string host, string? username, string? password) => _client;
+    }
+
+    /// <summary>A camera that keeps what is written to it (or refuses), like the IPOX does.</summary>
+    private sealed class FakeOnvifClient : IOnvifClient
+    {
+        private List<OnvifProfile> _profiles;
+
+        public FakeOnvifClient(IReadOnlyList<OnvifProfile> profiles) => _profiles = profiles.ToList();
+
+        public bool RefuseEncoderWrites { get; init; }
+        public bool RefuseAudioRemoval { get; init; }
+        public List<XElement> EncoderWrites { get; } = new();
+        public List<string> AudioRemovedFrom { get; } = new();
+
+        public Task<OnvifDeviceInformation> GetDeviceInformationAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new OnvifDeviceInformation("IPOX", null, null, null));
+
+        public Task<IReadOnlyList<OnvifProfile>> GetProfilesAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<OnvifProfile>>(_profiles.ToList());
+
+        public Task<string> GetStreamUriAsync(string profileToken, CancellationToken cancellationToken) =>
+            Task.FromResult($"rtsp://192.168.74.102:554/{profileToken}");
+
+        public Task<IReadOnlyList<OnvifResolution>> GetResolutionsAsync(string encoderToken, string profileToken, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<OnvifResolution>>(Array.Empty<OnvifResolution>());
+
+        public Task SetVideoEncoderAsync(XElement configuration, CancellationToken cancellationToken)
+        {
+            if (RefuseEncoderWrites)
+            {
+                throw new OnvifException("SetVideoEncoderConfiguration", 400, "ter:InvalidArgVal", "refused");
+            }
+
+            EncoderWrites.Add(configuration);
+            var token = configuration.Attribute("token")!.Value;
+            _profiles = _profiles.Select(p => p.VideoEncoder?.Token == token
+                ? p with { VideoEncoder = p.VideoEncoder with { Encoding = configuration.Elements().First(x => x.Name.LocalName == "Encoding").Value, Element = configuration } }
+                : p).ToList();
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<string>> GetH264ProfilesAsync(string encoderToken, string profileToken, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>>(new[] { "Baseline", "Main", "High" });
+
+        public Task RemoveAudioEncoderAsync(string profileToken, CancellationToken cancellationToken)
+        {
+            if (RefuseAudioRemoval)
+            {
+                throw new OnvifException("RemoveAudioEncoderConfiguration", 400, "ter:ConfigurationConflict", "fixed profile");
+            }
+
+            AudioRemovedFrom.Add(profileToken);
+            _profiles = _profiles.Select(p => p.Token == profileToken ? p with { AudioEncoderToken = null } : p).ToList();
+            return Task.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
     private sealed class ThrowingOnvifFactory : IOnvifClientFactory
     {
         public IOnvifClient Create(string host, string? username, string? password) => throw new InvalidOperationException("ONVIF must not be used");

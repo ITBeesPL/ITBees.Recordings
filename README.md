@@ -106,6 +106,14 @@ profile's encoder over ONVIF (resolution must be one the camera offers). A clip 
 key frame: with the factory GOP of 100 at 25 fps a clip may start up to 4 s early - `KeyframeInterval`
 = 2 × fps (50) is a good setting.
 
+**Codec and audio.** Clips are played in a browser, which decodes only H.264. A profile streaming JPEG
+(MJPEG) or MPEG4 is switched to H.264 on the camera over ONVIF (resolution, frame rate and bitrate
+kept, `H264Profile` Main when offered); when the camera refuses, the smallest H.264 profile at least
+as sharp is recorded instead, and only a camera with no H.264 at all is recorded as it is (status
+description ends with "not playable in browsers"). The audio encoder is removed from the recorded
+profile - MediaMTX would store G.711 as raw PCM, which browsers cannot play either. With an explicit
+`RtspUrl` none of this happens.
+
 ## Cameras and ONVIF
 
 - ONVIF is only discovery and settings (SOAP on port 80, `/onvif/device_service`); the picture is RTSP.

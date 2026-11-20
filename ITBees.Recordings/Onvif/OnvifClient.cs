@@ -16,9 +16,17 @@ internal sealed record OnvifVideoEncoder(string Token, string? Encoding, int? Wi
         $"{Encoding} {Width}x{Height} {FrameRate} fps {BitrateKbps} kb/s GOP {GovLength}";
 }
 
-internal sealed record OnvifProfile(string Token, string? Name, OnvifVideoEncoder? VideoEncoder)
+/// <param name="AudioEncoderToken">Set when the profile streams audio too (its RTSP stream then carries an audio track).</param>
+internal sealed record OnvifProfile(string Token, string? Name, OnvifVideoEncoder? VideoEncoder, string? AudioEncoderToken = null)
 {
     public int Pixels => (VideoEncoder?.Width ?? 0) * (VideoEncoder?.Height ?? 0);
+
+    /// <summary>
+    /// Only H.264 plays in every browser and in the Windows player. A JPEG (MJPEG) or MPEG4 stream is recorded
+    /// as-is into the MP4 and shows a black picture there (Cibet tenant gate camera, 2026-11-19), and it is
+    /// 3-8x larger than H.264 of the same picture.
+    /// </summary>
+    public bool IsBrowserPlayable => string.Equals(VideoEncoder?.Encoding, "H264", StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed record OnvifResolution(int Width, int Height)
@@ -33,6 +41,12 @@ internal interface IOnvifClient : IDisposable
     Task<string> GetStreamUriAsync(string profileToken, CancellationToken cancellationToken);
     Task<IReadOnlyList<OnvifResolution>> GetResolutionsAsync(string encoderToken, string profileToken, CancellationToken cancellationToken);
     Task SetVideoEncoderAsync(XElement configuration, CancellationToken cancellationToken);
+
+    /// <summary>H.264 profiles (Baseline/Main/High) the encoder can do on this profile; empty = no H.264 there.</summary>
+    Task<IReadOnlyList<string>> GetH264ProfilesAsync(string encoderToken, string profileToken, CancellationToken cancellationToken);
+
+    /// <summary>Takes the audio encoder off the profile, so its RTSP stream carries video only.</summary>
+    Task RemoveAudioEncoderAsync(string profileToken, CancellationToken cancellationToken);
 }
 
 internal interface IOnvifClientFactory
@@ -132,6 +146,21 @@ internal sealed class OnvifClient : IOnvifClient
             new XElement(Media + "Configuration", configuration.Attributes(), configuration.Nodes()),
             new XElement(Media + "ForcePersistence", "true"));
         await CallAsync(await GetMediaUriAsync(cancellationToken), "SetVideoEncoderConfiguration", request, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<string>> GetH264ProfilesAsync(string encoderToken, string profileToken, CancellationToken cancellationToken)
+    {
+        var request = new XElement(Media + "GetVideoEncoderConfigurationOptions",
+            new XElement(Media + "ConfigurationToken", encoderToken),
+            new XElement(Media + "ProfileToken", profileToken));
+        var body = await CallAsync(await GetMediaUriAsync(cancellationToken), "GetVideoEncoderConfigurationOptions", request, cancellationToken);
+        return ParseH264Profiles(body);
+    }
+
+    public async Task RemoveAudioEncoderAsync(string profileToken, CancellationToken cancellationToken)
+    {
+        var request = new XElement(Media + "RemoveAudioEncoderConfiguration", new XElement(Media + "ProfileToken", profileToken));
+        await CallAsync(await GetMediaUriAsync(cancellationToken), "RemoveAudioEncoderConfiguration", request, cancellationToken);
     }
 
     public void Dispose() => _httpClient.Dispose();
@@ -293,10 +322,62 @@ internal sealed class OnvifClient : IOnvifClient
                     new XElement(encoderElement));
             }
 
-            profiles.Add(new OnvifProfile(token, Child(profile, "Name")?.Value.Trim(), encoder));
+            var audioEncoder = profile.Elements().FirstOrDefault(x => x.Name.LocalName == "AudioEncoderConfiguration");
+            var audioToken = audioEncoder == null ? null : audioEncoder.Attribute("token")?.Value ?? string.Empty;
+            profiles.Add(new OnvifProfile(token, Child(profile, "Name")?.Value.Trim(), encoder, audioToken));
         }
 
         return profiles;
+    }
+
+    /// <summary>H264ProfilesSupported of a GetVideoEncoderConfigurationOptions answer (empty when the H264 block is missing).</summary>
+    internal static IReadOnlyList<string> ParseH264Profiles(XElement body) =>
+        body.Descendants().Where(x => x.Name.LocalName == "H264")
+            .SelectMany(x => x.Elements().Where(e => e.Name.LocalName == "H264ProfilesSupported"))
+            .Select(x => x.Value.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>
+    /// Copy of the camera's encoder XML switched to H.264 (resolution, frame rate and bitrate kept). The H264 block
+    /// goes where the ONVIF schema wants it - after RateControl/MPEG4, before Multicast - because cameras validate
+    /// the order. Null when the encoder already is H.264.
+    /// </summary>
+    internal static XElement? WithH264Encoding(OnvifVideoEncoder encoder, string h264Profile)
+    {
+        if (string.Equals(encoder.Encoding, "H264", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var copy = new XElement(encoder.Element);
+        var encoding = Child(copy, "Encoding") ?? throw new RecordingsException($"Encoder {encoder.Token} has no Encoding element");
+        encoding.Value = "H264";
+
+        // A key frame every 2 s: a clip can only start on one.
+        var govLength = Math.Max(1, (encoder.FrameRate ?? 25) * 2).ToString(CultureInfo.InvariantCulture);
+        var h264 = Child(copy, "H264");
+        if (h264 == null)
+        {
+            h264 = new XElement(Schema + "H264", new XElement(Schema + "GovLength", govLength), new XElement(Schema + "H264Profile", h264Profile));
+            var after = Child(copy, "MPEG4") ?? Child(copy, "RateControl") ?? Child(copy, "Quality") ?? Child(copy, "Resolution") ?? encoding;
+            after.AddAfterSelf(h264);
+        }
+        else
+        {
+            var profileElement = Child(h264, "H264Profile");
+            if (profileElement == null)
+            {
+                h264.Add(new XElement(Schema + "H264Profile", h264Profile));
+            }
+            else
+            {
+                profileElement.Value = h264Profile;
+            }
+        }
+
+        return copy;
     }
 
     /// <summary>Copy of the camera's encoder XML with the requested values replaced; null when nothing changes.</summary>
